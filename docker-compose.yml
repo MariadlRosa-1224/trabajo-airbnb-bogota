@@ -1,0 +1,43 @@
+# Levanta los tres servicios de la ECS. Las variables ${...} salen del archivo .env.
+services:
+  app:                                  # Streamlit: la app de la presentación
+    build: .
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      MLFLOW_URL: http://${EIP}:5000
+    volumes:
+      - ./data:/data
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+
+  metabase:                             # Tablero; guarda su configuración en la base "metabase" de RDS
+    image: metabase/metabase:latest
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: ${PG_HOST}
+      MB_DB_PORT: ${PG_PORT}
+      MB_DB_DBNAME: ${MB_DB}
+      MB_DB_USER: ${PG_USER}
+      MB_DB_PASS: ${PG_PASSWORD}
+      JAVA_TOOL_OPTIONS: "-Xmx1g"
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  mlflow:                               # Interfaz de MLflow sobre la base SQLite exportada desde Kaggle
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    # Se monta en la misma ruta que tenía en Kaggle para que las gráficas (artefactos) se encuentren.
+    volumes:
+      - ./data:/kaggle/working/proyecto_airbnb
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////kaggle/working/proyecto_airbnb/mlflow.db
+      --host 0.0.0.0 --port 5000
+      --allowed-hosts "${EIP}:5000,localhost:5000"
+    ports:
+      - "5000:5000"
+    restart: unless-stopped

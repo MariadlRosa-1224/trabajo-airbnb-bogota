@@ -1,0 +1,5 @@
+# Interfaz de MLflow. Misma versión que registró los modelos en Kaggle (esquema de la base).
+FROM python:3.13-slim
+RUN pip install --no-cache-dir mlflow==3.18.0
+ENV MLFLOW_DISABLE_AGENT_HINT=1
+EXPOSE 5000
