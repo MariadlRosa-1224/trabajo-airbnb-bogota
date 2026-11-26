@@ -20,6 +20,11 @@ MLFLOW_URL = os.getenv("MLFLOW_URL", "")
 LEGAL = ["RNT activo Bogotá", "código no encontrado", "código de otro municipio", "sin código"]
 COLOR_LEGAL = {"RNT activo Bogotá": "#2e7d32", "código no encontrado": "#c62828",
                "código de otro municipio": "#ef6c00", "sin código": "#6a1b9a"}
+NOMBRES = {"banos": "número de baños", "bedrooms": "habitaciones", "accommodates": "huéspedes",
+           "log1p_minimum_nights": "noches mínimas", "dist_zona_t_km": "distancia a la Zona T",
+           "dist_centro_int_km": "distancia al Centro Internacional", "log_valor_suelo_m2": "valor del suelo",
+           "log_avaluo": "avalúo catastral", "neighbourhood_cleansed": "localidad",
+           "property_type": "tipo de alojamiento", "grupo_legal": "situación frente al RNT"}
 AMENIDADES = {"am_wifi": "Wifi", "am_cocina": "Cocina", "am_lavadora": "Lavadora",
               "am_espacio_trabajo": "Espacio de trabajo", "am_ascensor": "Ascensor",
               "am_gimnasio": "Gimnasio", "am_piscina": "Piscina", "am_parqueadero": "Parqueadero"}
@@ -46,7 +51,7 @@ def cargar_datos():
         anuncios = pd.read_sql("SELECT * FROM anuncios", eng)
         pred = pd.read_sql("SELECT * FROM predicciones", eng)
         metricas = pd.read_sql("SELECT * FROM v_modelos", eng)
-        fuente = "RDS for PostgreSQL"
+        fuente = "PostgreSQL"
     except Exception:
         anuncios = pd.read_parquet(DATA / "anuncios.parquet")
         pred = pd.read_parquet(DATA / "predicciones.parquet")
@@ -149,13 +154,15 @@ with t_hip:
     st.subheader("H2. ¿Cambia la relación según la legalidad?")
     if resumen.get("h2"):
         h2 = resumen["h2"]
-        st.dataframe(pd.DataFrame({"Grupo": list(h2["pendientes"]),
-                                   "Elasticidad": [round(v, 3) for v in h2["pendientes"].values()]}),
+        st.dataframe(pd.DataFrame({"Grupo frente al RNT": list(h2["pendientes"]),
+                                   "Elasticidad": [num(v, 3) for v in h2["pendientes"].values()]}),
                      hide_index=True)
         st.write(f"Prueba F de pendientes iguales: F = {num(h2['F'])}, p = {num(h2['p'], 3)}.")
     leg = (anuncios.groupby("grupo_legal")["precio"].agg(anuncios="size", precio_mediano="median")
            .reindex(LEGAL).reset_index())
-    st.dataframe(leg.style.format({"precio_mediano": cop}), hide_index=True)
+    leg.columns = ["Grupo frente al RNT", "Anuncios", "Precio mediano por noche"]
+    st.dataframe(leg.style.format({"Anuncios": lambda n: f"{n:,}".replace(",", "."),
+                                   "Precio mediano por noche": cop}), hide_index=True)
 
     st.subheader("H3. Brecha de renta (ingreso Airbnb ÷ arriendo tradicional)")
     c1, c2 = st.columns(2)
@@ -177,8 +184,8 @@ with t_mod:
     tabla = metricas.rename(columns={"modelo": "Modelo", "rmse_log": "RMSE (log)", "mae_log": "MAE (log)",
                                      "r2_log": "R² (log)", "mae_cop": "MAE (COP)",
                                      "mejora_vs_base_pct": "Mejora vs. base (%)"})
-    st.dataframe(tabla.style.format({"RMSE (log)": "{:.3f}", "MAE (log)": "{:.3f}", "R² (log)": "{:.3f}",
-                                     "MAE (COP)": cop, "Mejora vs. base (%)": "{:.1f}"}), hide_index=True)
+    st.dataframe(tabla.style.format({"RMSE (log)": lambda v: num(v, 3), "MAE (log)": lambda v: num(v, 3), "R² (log)": lambda v: num(v, 3),
+                                     "MAE (COP)": cop, "Mejora vs. base (%)": lambda v: num(v, 1)}), hide_index=True)
     c1, c2 = st.columns(2)
     c1.altair_chart(alt.Chart(metricas).mark_bar(color="#3b6ea5").encode(
         x=alt.X("rmse_log:Q", title="RMSE (log) – menor es mejor"), y=alt.Y("modelo:N", sort="x", title=None)),
@@ -192,9 +199,9 @@ with t_mod:
     c2.altair_chart(puntos + diag, width="stretch")
     if resumen.get("top5_importancia"):
         st.markdown("**Variables más importantes** (importancia por permutación): " +
-                    ", ".join(resumen["top5_importancia"].keys()))
+                    ", ".join(NOMBRES.get(v, v) for v in resumen["top5_importancia"]))
     st.caption("Validación cruzada de 5 pliegues agrupados por manzana; la prueba (1.796 anuncios) se usó una sola vez."
-               + (f" Detalle de cada experimento en MLflow: {MLFLOW_URL}" if MLFLOW_URL else ""))
+               + " Cada experimento quedó registrado en MLflow.")
 
 # ---------------------------------------------------------------- simulador
 with t_sim:
